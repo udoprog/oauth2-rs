@@ -5,14 +5,22 @@ use std::fmt::{Debug, Display, Formatter};
 
 use super::helpers;
 use super::{
+    Config,
     Client, EmptyExtraTokenFields, ErrorResponseType, RequestTokenError, StandardErrorResponse,
     StandardTokenResponse, TokenType,
 };
 
+pub struct Basic;
+
+impl Config for Basic {
+    type ErrorResponse = BasicErrorResponse;
+    type TokenResponse = BasicTokenResponse;
+}
+
 ///
 /// Basic OAuth2 client specialization, suitable for most applications.
 ///
-pub type BasicClient = Client<BasicErrorResponse, BasicTokenResponse, BasicTokenType>;
+pub type BasicClient = Client<Basic>;
 
 ///
 /// Basic OAuth2 authorization token types.

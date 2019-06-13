@@ -402,11 +402,9 @@ pub enum AuthType {
 /// Stores the configuration for an OAuth2 client.
 ///
 #[derive(Clone, Debug)]
-pub struct Client<TE, TR, TT>
+pub struct Client<T>
 where
-    TE: ErrorResponse,
-    TR: TokenResponse<TT>,
-    TT: TokenType,
+    T: Config,
 {
     client_id: ClientId,
     client_secret: Option<ClientSecret>,
@@ -414,17 +412,10 @@ where
     auth_type: AuthType,
     token_url: Option<TokenUrl>,
     redirect_url: Option<RedirectUrl>,
-    phantom_te: PhantomData<TE>,
-    phantom_tr: PhantomData<TR>,
-    phantom_tt: PhantomData<TT>,
+    phantom: PhantomData<T>,
 }
 
-impl<TE, TR, TT> Client<TE, TR, TT>
-where
-    TE: ErrorResponse,
-    TR: TokenResponse<TT>,
-    TT: TokenType,
-{
+impl<T> Client<T> where T: Config {
     ///
     /// Initializes an OAuth2 client with the fields common to most OAuth2 flows.
     ///
@@ -458,9 +449,7 @@ where
             auth_type: AuthType::BasicAuth,
             token_url,
             redirect_url: None,
-            phantom_te: PhantomData,
-            phantom_tr: PhantomData,
-            phantom_tt: PhantomData,
+            phantom: PhantomData,
         }
     }
 
@@ -528,7 +517,7 @@ where
     ///
     /// See https://tools.ietf.org/html/rfc6749#section-4.1.3
     ///
-    pub fn exchange_code(&self, code: AuthorizationCode) -> CodeTokenRequest<TE, TR, TT> {
+    pub fn exchange_code(&self, code: AuthorizationCode) -> CodeTokenRequest<T> {
         CodeTokenRequest {
             auth_type: &self.auth_type,
             client_id: &self.client_id,
@@ -551,7 +540,7 @@ where
         &'a self,
         username: &'b ResourceOwnerUsername,
         password: &'b ResourceOwnerPassword,
-    ) -> PasswordTokenRequest<'b, TE, TR, TT>
+    ) -> PasswordTokenRequest<'b, T>
     where
         'a: 'b,
     {
@@ -573,7 +562,7 @@ where
     ///
     /// See https://tools.ietf.org/html/rfc6749#section-4.4.2
     ///
-    pub fn exchange_client_credentials(&self) -> ClientCredentialsTokenRequest<TE, TR, TT> {
+    pub fn exchange_client_credentials(&self) -> ClientCredentialsTokenRequest<T> {
         ClientCredentialsTokenRequest {
             auth_type: &self.auth_type,
             client_id: &self.client_id,
@@ -593,7 +582,7 @@ where
     pub fn exchange_refresh_token<'a, 'b>(
         &'a self,
         refresh_token: &'b RefreshToken,
-    ) -> RefreshTokenRequest<'b, TE, TR, TT>
+    ) -> RefreshTokenRequest<'b, T>
     where
         'a: 'b,
     {
@@ -766,11 +755,9 @@ pub struct HttpResponse {
 /// See https://tools.ietf.org/html/rfc6749#section-4.1.3.
 ///
 #[derive(Debug)]
-pub struct CodeTokenRequest<'a, TE, TR, TT>
+pub struct CodeTokenRequest<'a, T>
 where
-    TE: ErrorResponse,
-    TR: TokenResponse<TT>,
-    TT: TokenType,
+    T: Config
 {
     auth_type: &'a AuthType,
     client_id: &'a ClientId,
@@ -780,13 +767,11 @@ where
     pkce_verifier: Option<PkceCodeVerifier>,
     token_url: Option<&'a TokenUrl>,
     redirect_url: Option<&'a RedirectUrl>,
-    _phantom: PhantomData<(TE, TR, TT)>,
+    _phantom: PhantomData<T>,
 }
-impl<'a, TE, TR, TT> CodeTokenRequest<'a, TE, TR, TT>
+impl<'a, T> CodeTokenRequest<'a, T>
 where
-    TE: ErrorResponse,
-    TR: TokenResponse<TT>,
-    TT: TokenType,
+    T: Config,
 {
     ///
     /// Appends an extra param to the token request.
@@ -824,7 +809,7 @@ where
         self
     }
 
-    fn prepare_request<RE>(self) -> Result<HttpRequest, RequestTokenError<RE, TE>>
+    fn prepare_request<RE>(self) -> Result<HttpRequest, RequestTokenError<RE, T::ErrorResponse>>
     where
         RE: Fail,
     {
@@ -852,7 +837,7 @@ where
     ///
     /// Synchronously sends the request to the authorization server and awaits a response.
     ///
-    pub fn request<F, RE>(self, http_client: F) -> Result<TR, RequestTokenError<RE, TE>>
+    pub fn request<F, RE>(self, http_client: F) -> Result<T::TokenResponse, RequestTokenError<RE, T::ErrorResponse>>
     where
         F: FnOnce(HttpRequest) -> Result<HttpResponse, RE>,
         RE: Fail,
@@ -862,11 +847,9 @@ where
             .and_then(token_response)
     }
 }
-impl<'a, TE, TR, TT> CodeTokenRequest<'a, TE, TR, TT>
+impl<'a, T> CodeTokenRequest<'a, T>
 where
-    TE: ErrorResponse + 'static,
-    TR: TokenResponse<TT>,
-    TT: TokenType,
+    T: Config,
 {
     ///
     /// Asynchronously sends the request to the authorization server and returns a Future.
@@ -874,7 +857,7 @@ where
     pub fn request_async<C, F, RE>(
         self,
         http_client: C,
-    ) -> impl Future<Item = TR, Error = RequestTokenError<RE, TE>>
+    ) -> impl Future<Item = T::TokenResponse, Error = RequestTokenError<RE, T::ErrorResponse>>
     where
         C: FnOnce(HttpRequest) -> F,
         F: Future<Item = HttpResponse, Error = RE>,
@@ -893,11 +876,9 @@ where
 /// See https://tools.ietf.org/html/rfc6749#section-6.
 ///
 #[derive(Debug)]
-pub struct RefreshTokenRequest<'a, TE, TR, TT>
+pub struct RefreshTokenRequest<'a, T>
 where
-    TE: ErrorResponse,
-    TR: TokenResponse<TT>,
-    TT: TokenType,
+    T: Config,
 {
     auth_type: &'a AuthType,
     client_id: &'a ClientId,
@@ -906,13 +887,11 @@ where
     refresh_token: &'a RefreshToken,
     scopes: Vec<Cow<'a, Scope>>,
     token_url: Option<&'a TokenUrl>,
-    _phantom: PhantomData<(TE, TR, TT)>,
+    _phantom: PhantomData<T>,
 }
-impl<'a, TE, TR, TT> RefreshTokenRequest<'a, TE, TR, TT>
+impl<'a, T> RefreshTokenRequest<'a, T>
 where
-    TE: ErrorResponse,
-    TR: TokenResponse<TT>,
-    TT: TokenType,
+    T: Config
 {
     ///
     /// Appends an extra param to the token request.
@@ -949,7 +928,7 @@ where
     ///
     /// Synchronously sends the request to the authorization server and awaits a response.
     ///
-    pub fn request<F, RE>(self, http_client: F) -> Result<TR, RequestTokenError<RE, TE>>
+    pub fn request<F, RE>(self, http_client: F) -> Result<T::TokenResponse, RequestTokenError<RE, T::ErrorResponse>>
     where
         F: FnOnce(HttpRequest) -> Result<HttpResponse, RE>,
         RE: Fail,
@@ -980,11 +959,9 @@ where
 /// See https://tools.ietf.org/html/rfc6749#section-4.3.
 ///
 #[derive(Debug)]
-pub struct PasswordTokenRequest<'a, TE, TR, TT>
+pub struct PasswordTokenRequest<'a, T>
 where
-    TE: ErrorResponse,
-    TR: TokenResponse<TT>,
-    TT: TokenType,
+    T: Config,
 {
     auth_type: &'a AuthType,
     client_id: &'a ClientId,
@@ -994,13 +971,11 @@ where
     password: &'a ResourceOwnerPassword,
     scopes: Vec<Cow<'a, Scope>>,
     token_url: Option<&'a TokenUrl>,
-    _phantom: PhantomData<(TE, TR, TT)>,
+    _phantom: PhantomData<T>,
 }
-impl<'a, TE, TR, TT> PasswordTokenRequest<'a, TE, TR, TT>
+impl<'a, T> PasswordTokenRequest<'a, T>
 where
-    TE: ErrorResponse,
-    TR: TokenResponse<TT>,
-    TT: TokenType,
+    T: Config,
 {
     ///
     /// Appends an extra param to the token request.
@@ -1037,7 +1012,7 @@ where
     ///
     /// Synchronously sends the request to the authorization server and awaits a response.
     ///
-    pub fn request<F, RE>(self, http_client: F) -> Result<TR, RequestTokenError<RE, TE>>
+    pub fn request<F, RE>(self, http_client: F) -> Result<T::TokenResponse, RequestTokenError<RE, T::ErrorResponse>>
     where
         F: FnOnce(HttpRequest) -> Result<HttpResponse, RE>,
         RE: Fail,
@@ -1069,11 +1044,9 @@ where
 /// See https://tools.ietf.org/html/rfc6749#section-4.4.
 ///
 #[derive(Debug)]
-pub struct ClientCredentialsTokenRequest<'a, TE, TR, TT>
+pub struct ClientCredentialsTokenRequest<'a, T>
 where
-    TE: ErrorResponse,
-    TR: TokenResponse<TT>,
-    TT: TokenType,
+    T: Config,
 {
     auth_type: &'a AuthType,
     client_id: &'a ClientId,
@@ -1081,13 +1054,11 @@ where
     extra_params: Vec<(Cow<'a, str>, Cow<'a, str>)>,
     scopes: Vec<Cow<'a, Scope>>,
     token_url: Option<&'a TokenUrl>,
-    _phantom: PhantomData<(TE, TR, TT)>,
+    _phantom: PhantomData<T>,
 }
-impl<'a, TE, TR, TT> ClientCredentialsTokenRequest<'a, TE, TR, TT>
+impl<'a, T> ClientCredentialsTokenRequest<'a, T>
 where
-    TE: ErrorResponse,
-    TR: TokenResponse<TT>,
-    TT: TokenType,
+    T: Config,
 {
     ///
     /// Appends an extra param to the token request.
@@ -1124,7 +1095,7 @@ where
     ///
     /// Synchronously sends the request to the authorization server and awaits a response.
     ///
-    pub fn request<F, RE>(self, http_client: F) -> Result<TR, RequestTokenError<RE, TE>>
+    pub fn request<F, RE>(self, http_client: F) -> Result<T::TokenResponse, RequestTokenError<RE, T::ErrorResponse>>
     where
         F: FnOnce(HttpRequest) -> Result<HttpResponse, RE>,
         RE: Fail,
@@ -1241,14 +1212,13 @@ fn token_request<'a>(
     }
 }
 
-fn token_response<RE, TE, TR, TT>(
+fn token_response<RE, TR, TE>(
     http_response: HttpResponse,
 ) -> Result<TR, RequestTokenError<RE, TE>>
 where
     RE: Fail,
+    TR: TokenResponse,
     TE: ErrorResponse,
-    TR: TokenResponse<TT>,
-    TT: TokenType,
 {
     if http_response.status_code != StatusCode::OK {
         let reason = http_response.body.as_slice();
@@ -1316,6 +1286,14 @@ pub trait ExtraTokenFields: Clone + DeserializeOwned + Debug + PartialEq + Seria
 pub struct EmptyExtraTokenFields {}
 impl ExtraTokenFields for EmptyExtraTokenFields {}
 
+/// The configuration for a single OAuth 2.0 provider.
+pub trait Config {
+    /// The type of token response expected for the provider.
+    type TokenResponse: TokenResponse;
+    /// The type of error response expected for the provider.
+    type ErrorResponse: ErrorResponse;
+}
+
 ///
 /// Common methods shared by all OAuth2 token implementations.
 ///
@@ -1324,10 +1302,10 @@ impl ExtraTokenFields for EmptyExtraTokenFields {}
 /// separately from the `StandardTokenResponse` struct to support customization by clients,
 /// such as supporting interoperability with non-standards-complaint OAuth2 providers.
 ///
-pub trait TokenResponse<TT>: Clone + Debug + DeserializeOwned + PartialEq + Serialize
-where
-    TT: TokenType,
-{
+pub trait TokenResponse: Clone + Debug + DeserializeOwned + PartialEq + Serialize {
+    /// The type of token associated with this response.
+    type TokenType: TokenType;
+
     ///
     /// REQUIRED. The access token issued by the authorization server.
     ///
@@ -1337,7 +1315,7 @@ where
     /// [Section 7.1](https://tools.ietf.org/html/rfc6749#section-7.1).
     /// Value is case insensitive and deserialized to the generic `TokenType` parameter.
     ///
-    fn token_type(&self) -> &TT;
+    fn token_type(&self) -> &Self::TokenType;
     ///
     /// RECOMMENDED. The lifetime in seconds of the access token. For example, the value 3600
     /// denotes that the access token will expire in one hour from the time the response was
@@ -1459,11 +1437,13 @@ where
     }
 }
 
-impl<EF, TT> TokenResponse<TT> for StandardTokenResponse<EF, TT>
+impl<EF, TT> TokenResponse for StandardTokenResponse<EF, TT>
 where
     EF: ExtraTokenFields,
     TT: TokenType,
 {
+    type TokenType = TT;
+
     ///
     /// REQUIRED. The access token issued by the authorization server.
     ///
